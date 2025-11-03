@@ -28,3 +28,16 @@ export interface GeometryData {
   indices: Uint16Array;
 }
 
+export interface SceneObject {
+  id: string;
+  name: string;
+  type: 'floor' | 'walls' | 'furniture';
+  texture: WebGLTexture | null;
+  selected: boolean;
+  furnitureRef?: FurnitureObject; // Reference if type is 'furniture'
+  boundingBox?: {
+    min: vec3;
+    max: vec3;
+  };
+}
+

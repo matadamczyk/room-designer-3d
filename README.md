@@ -21,10 +21,15 @@ A desktop application for interactive 3D interior design, built with WebGL, Type
 
 ### Advanced Graphics Features
 - **Phong Lighting Model**: Complete implementation with ambient, diffuse, and specular components
-- **Shadow Mapping**: Real-time shadows using depth map technique
-- **Texture Support**: Procedural textures for floor and walls
+- **Shadow Mapping**: Real-time shadows using depth map technique with PCF (Percentage Closer Filtering)
+- **Texture Support**: 
+  - High-quality procedural textures for floor (wood parquet) and walls (painted surface)
+  - Load custom textures from URLs to any object (supports external images)
+  - Seamless texture tiling with proper UV mapping
+  - Per-object texture assignment (floor, walls, and individual furniture)
 - **GLSL Shaders**: Custom vertex and fragment shaders for all rendering
-- **Ray Casting**: Mouse picking for object selection
+- **Ray Casting**: Mouse picking for precise object selection (works on all objects)
+- **Advanced Camera**: FPS-style movement with WASD + orbital rotation
 
 ### User Interface
 - **lil-gui Integration**: Real-time parameter adjustment
@@ -91,22 +96,40 @@ The built application will be available in `src-tauri/target/release/`.
 
 ## 🎮 Controls
 
-### Camera
+### Camera Movement
 - **Left Click + Drag**: Rotate camera around the scene
 - **Mouse Wheel**: Zoom in/out
+- **W/A/S/D**: Move camera forward/left/backward/right
+- **Q/E**: Move camera down/up
+- Camera follows mouse rotation direction for intuitive FPS-style movement
 
 ### Object Selection
-- **Left Click** on furniture: Select object
+- **Left Click** on any object (floor, walls, furniture): Select object
 - Selected objects are highlighted with a yellow tint
+- Use GUI to edit selected object properties
 
 ### GUI Controls
 - **Scene Panel**: Add new furniture to the room
+- **Textures Panel**: 
+  1. First, click on any object (floor, walls, or furniture)
+  2. Then click "Load Texture to Selected"
+  3. Paste a texture URL
+  4. The texture will be applied to that specific object
 - **Lighting Panel**: Adjust light direction, intensity, and toggle shadows
 - **Selected Object Panel** (appears when object is selected):
-  - Position sliders (X, Y, Z)
-  - Rotation control (0-360°)
-  - Scale sliders (X, Y, Z)
-  - Delete and Deselect buttons
+  - For **Furniture**: Position (X, Y, Z), Rotation (0-360°), Scale (X, Y, Z), Delete button
+  - For **Floor/Walls**: Object type info and deselect option
+  - Deselect button for all types
+
+> **Tip**: Check `TEXTURE_SOURCES.md` for free texture URLs you can use!
+
+### How to Apply Textures
+1. **Click** on the floor, walls, or any furniture piece to select it
+2. Selected objects will be highlighted with a yellow tint
+3. Open the **"Selected"** panel in the GUI to see what's selected
+4. Click **"Load Texture to Selected"** in the Textures panel
+5. Paste a texture URL (see TEXTURE_SOURCES.md for examples)
+6. The texture will be applied instantly!
 
 ## 📦 Furniture Types
 
@@ -191,9 +214,13 @@ Complete Phong reflection model with:
 - [Tauri](https://tauri.app/) - Desktop application framework (MIT License)
 - [Vite](https://vitejs.dev/) - Fast build tool (MIT License)
 
-### Assets
-- All 3D geometry is procedurally generated - no external models
-- All textures are procedurally generated - no external images
+### Assets & Textures
+- All 3D geometry is procedurally generated - no external models required
+- Default textures are procedurally generated (wood floor, painted walls)
+- Optional: Load external textures from free sources (see `TEXTURE_SOURCES.md`)
+  - [Poly Haven](https://polyhaven.com/textures) - CC0 License
+  - [ambientCG](https://ambientcg.com/) - CC0 License  
+  - [Textures.com](https://www.textures.com/) - Free with account
 - Icons from Tauri default template
 
 ## 🐛 Known Issues & Future Improvements

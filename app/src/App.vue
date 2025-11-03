@@ -3,8 +3,9 @@
     <canvas ref="canvas" class="webgl-canvas"></canvas>
     <div class="info">
       <h1>3D Room Designer</h1>
-      <p>Left click + drag: rotate camera | Scroll: zoom</p>
-      <p>Click on furniture to select | Use GUI to edit</p>
+      <p><strong>Mouse:</strong> Drag to rotate | Scroll to zoom</p>
+      <p><strong>WASD:</strong> Move camera | <strong>Q/E:</strong> Up/Down</p>
+      <p><strong>Click:</strong> Select objects | Use GUI to edit</p>
     </div>
   </div>
 </template>
@@ -12,7 +13,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { RoomScene, OrbitControls } from './utils';
-import { FurnitureObject } from './types/FurnitureObject';
+import { SceneObject } from './types/FurnitureObject';
 import GUI from 'lil-gui';
 
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -84,12 +85,15 @@ onMounted(() => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    const selected = scene.selectFurniture(x, y);
+    const selected = scene.selectObject(x, y);
     updateSelectedObjectGUI(selected);
   });
 
   // Render loop
   const render = () => {
+    // Update controls (handles WASD movement)
+    controls?.update();
+    
     if (controls) {
       scene?.setCamera(controls.getPosition(), controls.getTarget());
     }
@@ -106,6 +110,7 @@ onMounted(() => {
     if (animationId !== null) {
       cancelAnimationFrame(animationId);
     }
+    controls?.dispose();
     gui?.destroy();
     scene?.dispose();
   });
@@ -137,6 +142,34 @@ function setupGUI() {
   sceneFolder.add(addFurnitureSettings, 'add').name('➕ Add Furniture');
   sceneFolder.open();
 
+  // Textures controls
+  const texturesFolder = gui.addFolder('Textures');
+  
+  const textureSettings = {
+    info: 'Click object, then load texture',
+    loadTexture: () => {
+      if (!scene) return;
+      const selected = scene.getSelectedObject();
+      if (!selected) {
+        alert('Please select an object first (floor, walls, or furniture)');
+        return;
+      }
+      const url = prompt(`Enter texture URL for ${selected.name}:`);
+      if (url) {
+        scene.loadTextureToSelected(url).then(success => {
+          if (success) {
+            alert(`Texture loaded to ${selected.name}!`);
+          } else {
+            alert('Failed to load texture');
+          }
+        });
+      }
+    }
+  };
+
+  texturesFolder.add(textureSettings, 'info').name('ℹ️ Info').disable();
+  texturesFolder.add(textureSettings, 'loadTexture').name('📁 Load Texture to Selected');
+
   // Lighting controls
   const lightingFolder = gui.addFolder('Lighting');
   
@@ -167,7 +200,7 @@ function setupGUI() {
   // Selected object folder (created dynamically)
 }
 
-function updateSelectedObjectGUI(selected: FurnitureObject | null) {
+function updateSelectedObjectGUI(selected: SceneObject | null) {
   // Remove existing folder
   if (selectedObjectFolder) {
     selectedObjectFolder.destroy();
@@ -177,72 +210,82 @@ function updateSelectedObjectGUI(selected: FurnitureObject | null) {
   if (!selected || !gui || !scene) return;
 
   // Create new folder for selected object
-  selectedObjectFolder = gui.addFolder(`Selected: ${selected.type} #${selected.id.split('_')[1]}`);
+  selectedObjectFolder = gui.addFolder(`Selected: ${selected.name}`);
 
-  const settings = {
-    posX: selected.position[0],
-    posY: selected.position[1],
-    posZ: selected.position[2],
-    rotation: selected.rotation * (180 / Math.PI),
-    scaleX: selected.scale[0],
-    scaleY: selected.scale[1],
-    scaleZ: selected.scale[2],
-    delete: () => {
-      if (!scene || !selected) return;
-      scene.removeFurniture(selected);
-      scene.clearSelection();
-      updateSelectedObjectGUI(null);
-    },
-    deselect: () => {
-      scene?.clearSelection();
-      updateSelectedObjectGUI(null);
-    }
-  };
+  // If it's furniture, show transform controls
+  if (selected.type === 'furniture' && selected.furnitureRef) {
+    const furniture = selected.furnitureRef;
+    
+    const settings = {
+      posX: furniture.position[0],
+      posY: furniture.position[1],
+      posZ: furniture.position[2],
+      rotation: furniture.rotation * (180 / Math.PI),
+      scaleX: furniture.scale[0],
+      scaleY: furniture.scale[1],
+      scaleZ: furniture.scale[2],
+      delete: () => {
+        if (!scene || !furniture) return;
+        scene.removeFurniture(furniture);
+        scene.clearSelection();
+        updateSelectedObjectGUI(null);
+      },
+      deselect: () => {
+        scene?.clearSelection();
+        updateSelectedObjectGUI(null);
+      }
+    };
 
-  // Position controls
-  const posFolder = selectedObjectFolder.addFolder('Position');
-  posFolder.add(settings, 'posX', -9, 9, 0.1).name('X').onChange((value: number) => {
-    selected.position[0] = value;
-  });
-  posFolder.add(settings, 'posY', 0, 4, 0.1).name('Y').onChange((value: number) => {
-    selected.position[1] = value;
-  });
-  posFolder.add(settings, 'posZ', -9, 9, 0.1).name('Z').onChange((value: number) => {
-    selected.position[2] = value;
-  });
-  posFolder.open();
+    // Position controls
+    const posFolder = selectedObjectFolder.addFolder('Position');
+    posFolder.add(settings, 'posX', -9, 9, 0.1).name('X').onChange((value: number) => {
+      furniture.position[0] = value;
+    });
+    posFolder.add(settings, 'posY', 0, 4, 0.1).name('Y').onChange((value: number) => {
+      furniture.position[1] = value;
+    });
+    posFolder.add(settings, 'posZ', -9, 9, 0.1).name('Z').onChange((value: number) => {
+      furniture.position[2] = value;
+    });
+    posFolder.open();
 
-  // Rotation control
-  selectedObjectFolder.add(settings, 'rotation', 0, 360, 1).name('Rotation (°)').onChange((value: number) => {
-    selected.rotation = value * (Math.PI / 180);
-  });
+    // Rotation control
+    selectedObjectFolder.add(settings, 'rotation', 0, 360, 1).name('Rotation (°)').onChange((value: number) => {
+      furniture.rotation = value * (Math.PI / 180);
+    });
 
-  // Scale controls
-  const scaleFolder = selectedObjectFolder.addFolder('Scale');
-  scaleFolder.add(settings, 'scaleX', 0.5, 3, 0.1).name('X').onChange((value: number) => {
-    selected.scale[0] = value;
-    updateBoundingBox(selected);
-  });
-  scaleFolder.add(settings, 'scaleY', 0.5, 3, 0.1).name('Y').onChange((value: number) => {
-    selected.scale[1] = value;
-    updateBoundingBox(selected);
-  });
-  scaleFolder.add(settings, 'scaleZ', 0.5, 3, 0.1).name('Z').onChange((value: number) => {
-    selected.scale[2] = value;
-    updateBoundingBox(selected);
-  });
+    // Scale controls
+    const scaleFolder = selectedObjectFolder.addFolder('Scale');
+    scaleFolder.add(settings, 'scaleX', 0.5, 3, 0.1).name('X').onChange((value: number) => {
+      furniture.scale[0] = value;
+    });
+    scaleFolder.add(settings, 'scaleY', 0.5, 3, 0.1).name('Y').onChange((value: number) => {
+      furniture.scale[1] = value;
+    });
+    scaleFolder.add(settings, 'scaleZ', 0.5, 3, 0.1).name('Z').onChange((value: number) => {
+      furniture.scale[2] = value;
+    });
 
-  // Action buttons
-  selectedObjectFolder.add(settings, 'deselect').name('↩ Deselect');
-  selectedObjectFolder.add(settings, 'delete').name('🗑 Delete');
+    // Action buttons
+    selectedObjectFolder.add(settings, 'deselect').name('↩ Deselect');
+    selectedObjectFolder.add(settings, 'delete').name('🗑 Delete');
+  } else {
+    // For floor and walls, just show info and deselect
+    const settings = {
+      type: selected.type,
+      deselect: () => {
+        scene?.clearSelection();
+        updateSelectedObjectGUI(null);
+      }
+    };
+    
+    selectedObjectFolder.add(settings, 'type').name('Type').disable();
+    selectedObjectFolder.add(settings, 'deselect').name('↩ Deselect');
+  }
 
   selectedObjectFolder.open();
 }
 
-function updateBoundingBox(_furniture: FurnitureObject) {
-  // Simple bounding box update - in a real app this would be more sophisticated
-  // For now, we just acknowledge that the bounding box should be recalculated
-}
 </script>
 
 <style scoped>

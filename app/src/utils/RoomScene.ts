@@ -1,7 +1,7 @@
+import { FurnitureObject, SceneObject } from '../types/FurnitureObject';
 import { mat4, vec3 } from 'gl-matrix';
 
 import { FurnitureFactory } from './FurnitureFactory';
-import { FurnitureObject } from '../types/FurnitureObject';
 import { Raycaster } from './Raycaster';
 import { ShadowMap } from './ShadowMap';
 import { TextureLoader } from './TextureLoader';
@@ -51,7 +51,10 @@ export class RoomScene {
 
   // Furniture
   private furniture: FurnitureObject[] = [];
-  private selectedFurniture: FurnitureObject | null = null;
+  
+  // Scene objects (for selection and texture assignment)
+  private sceneObjects: SceneObject[] = [];
+  private selectedObject: SceneObject | null = null;
 
   // Settings
   public shadowsEnabled = true;
@@ -74,13 +77,13 @@ export class RoomScene {
     this.init();
   }
 
-  private async init() {
+  private init() {
     const gl = this.gl;
 
-    // Enable depth testing and backface culling
+    // Enable depth testing
     gl.enable(gl.DEPTH_TEST);
-    gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
+    // Disable culling to fix floor rendering
+    gl.disable(gl.CULL_FACE);
     
     gl.clearColor(0.53, 0.81, 0.92, 1.0); // Sky blue background
 
@@ -94,21 +97,109 @@ export class RoomScene {
     this.createFloorGeometry();
     this.createWallsGeometry();
 
-    // Load textures
-    await this.loadTextures();
+    // Load textures synchronously
+    this.loadTextures();
+
+    // Initialize scene objects for selection
+    this.initializeSceneObjects();
 
     // Update aspect ratio
     this.updateAspect();
   }
 
-  private async loadTextures() {
-    // Create procedural textures
-    this.floorTexture = this.textureLoader.createCheckerboardTexture(512, 64);
-    this.wallTexture = this.textureLoader.createProceduralTexture(512, 512, (x, y) => {
-      const noise = (Math.sin(x * 0.1) + Math.cos(y * 0.1)) * 10;
-      const base = 220 + noise;
-      return [base, base, base * 0.95, 255];
+  private initializeSceneObjects() {
+    // Add floor as selectable object
+    this.sceneObjects.push({
+      id: 'floor',
+      name: 'Floor',
+      type: 'floor',
+      texture: this.floorTexture,
+      selected: false,
+      boundingBox: {
+        min: vec3.fromValues(-10, -0.1, -10),
+        max: vec3.fromValues(10, 0, 10)
+      }
     });
+
+    // Add walls as selectable object
+    this.sceneObjects.push({
+      id: 'walls',
+      name: 'Walls',
+      type: 'walls',
+      texture: this.wallTexture,
+      selected: false,
+      boundingBox: {
+        min: vec3.fromValues(-10, 0, -10),
+        max: vec3.fromValues(10, 5, 10)
+      }
+    });
+  }
+
+  private loadTextures() {
+    console.log('🎨 Loading textures...');
+    
+    // Create more realistic procedural textures
+    
+    // Wood parquet floor texture
+    this.floorTexture = this.textureLoader.createProceduralTexture(512, 512, (x, y) => {
+      const plankWidth = 64;
+      const plankHeight = 8;
+      
+      const plankY = Math.floor(y / plankHeight);
+      
+      // Alternating plank pattern
+      const localX = x % plankWidth;
+      const localY = y % plankHeight;
+      
+      // Wood grain effect
+      const grain = Math.sin(localX * 0.3 + plankY * 13) * 8;
+      const knots = Math.sin(localX * 0.1) * Math.sin(localY * 0.5) * 5;
+      
+      // Base wood color (warm brown)
+      const base = 120 + grain + knots + (Math.random() - 0.5) * 15;
+      
+      // Plank borders (darker)
+      const borderSize = 2;
+      const isBorder = localX < borderSize || localX >= plankWidth - borderSize || 
+                       localY < borderSize || localY >= plankHeight - borderSize;
+      
+      const r = isBorder ? base * 0.5 : base * 0.7;
+      const g = isBorder ? base * 0.4 : base * 0.5;
+      const b = isBorder ? base * 0.3 : base * 0.35;
+      
+      return [
+        Math.max(0, Math.min(255, r)),
+        Math.max(0, Math.min(255, g)),
+        Math.max(0, Math.min(255, b)),
+        255
+      ];
+    });
+    
+    // Painted wall texture with subtle details
+    this.wallTexture = this.textureLoader.createProceduralTexture(512, 512, (x, y) => {
+      // Base color - warm beige
+      const baseR = 235;
+      const baseG = 225;
+      const baseB = 210;
+      
+      // Add subtle paint texture variation
+      const variation = (Math.sin(x * 0.02) * Math.cos(y * 0.03) + 
+                        Math.sin(x * 0.05 + y * 0.04)) * 8;
+      
+      // Small random imperfections
+      const noise = (Math.random() - 0.5) * 10;
+      
+      return [
+        Math.max(0, Math.min(255, baseR + variation + noise)),
+        Math.max(0, Math.min(255, baseG + variation + noise)),
+        Math.max(0, Math.min(255, baseB + variation + noise)),
+        255
+      ];
+    });
+
+    console.log('✅ Textures loaded successfully');
+    console.log('Floor texture:', this.floorTexture);
+    console.log('Wall texture:', this.wallTexture);
   }
 
   private createShaderProgram(): WebGLProgram | null {
@@ -283,12 +374,14 @@ export class RoomScene {
     const gl = this.gl;
     const size = 10;
 
+    // Higher texture repeat for better detail
+    const texRepeat = 10;
     const vertices = new Float32Array([
       // Position          Normal           TexCoord
       -size, 0, -size,     0, 1, 0,        0, 0,
-       size, 0, -size,     0, 1, 0,        5, 0,
-       size, 0,  size,     0, 1, 0,        5, 5,
-      -size, 0,  size,     0, 1, 0,        0, 5,
+       size, 0, -size,     0, 1, 0,        texRepeat, 0,
+       size, 0,  size,     0, 1, 0,        texRepeat, texRepeat,
+      -size, 0,  size,     0, 1, 0,        0, texRepeat,
     ]);
 
     const indices = new Uint16Array([
@@ -496,7 +589,18 @@ export class RoomScene {
   private drawFloor() {
     const gl = this.gl;
     const program = this.program;
-    if (!program || !this.floorVAO) return;
+    if (!program || !this.floorVAO) {
+      console.warn('Cannot draw floor:', { program, vao: this.floorVAO });
+      return;
+    }
+
+    const floorObj = this.sceneObjects.find(obj => obj.id === 'floor');
+    const isSelected = floorObj?.selected || false;
+    const texture = floorObj?.texture || this.floorTexture;
+
+    if (!texture) {
+      console.warn('Floor texture is null!');
+    }
 
     const modelMatrix = mat4.create();
     const normalMatrix = this.getNormalMatrix(modelMatrix);
@@ -505,13 +609,15 @@ export class RoomScene {
     gl.uniformMatrix3fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, normalMatrix);
     gl.uniform3f(gl.getUniformLocation(program, 'uMaterialColor'), 1.0, 1.0, 1.0);
     gl.uniform1f(gl.getUniformLocation(program, 'uShininess'), 8.0);
-    gl.uniform1i(gl.getUniformLocation(program, 'uUseTexture'), 1);
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsSelected'), 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'uUseTexture'), texture ? 1 : 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsSelected'), isSelected ? 1 : 0);
 
     // Bind floor texture
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.floorTexture);
-    gl.uniform1i(gl.getUniformLocation(program, 'uTexture'), 0);
+    if (texture) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(gl.getUniformLocation(program, 'uTexture'), 0);
+    }
 
     gl.bindVertexArray(this.floorVAO);
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
@@ -522,6 +628,10 @@ export class RoomScene {
     const program = this.program;
     if (!program || !this.wallVAO) return;
 
+    const wallsObj = this.sceneObjects.find(obj => obj.id === 'walls');
+    const isSelected = wallsObj?.selected || false;
+    const texture = wallsObj?.texture || this.wallTexture;
+
     const modelMatrix = mat4.create();
     const normalMatrix = this.getNormalMatrix(modelMatrix);
 
@@ -529,13 +639,15 @@ export class RoomScene {
     gl.uniformMatrix3fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, normalMatrix);
     gl.uniform3f(gl.getUniformLocation(program, 'uMaterialColor'), 1.0, 1.0, 1.0);
     gl.uniform1f(gl.getUniformLocation(program, 'uShininess'), 4.0);
-    gl.uniform1i(gl.getUniformLocation(program, 'uUseTexture'), 1);
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsSelected'), 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'uUseTexture'), texture ? 1 : 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsSelected'), isSelected ? 1 : 0);
 
     // Bind wall texture
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.wallTexture);
-    gl.uniform1i(gl.getUniformLocation(program, 'uTexture'), 0);
+    if (texture) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(gl.getUniformLocation(program, 'uTexture'), 0);
+    }
 
     gl.bindVertexArray(this.wallVAO);
     gl.drawElements(gl.TRIANGLES, this.wallIndexCount, gl.UNSIGNED_SHORT, 0);
@@ -547,7 +659,8 @@ export class RoomScene {
     if (!program) return;
 
     this.furniture.forEach(item => {
-      const isSelected = item === this.selectedFurniture;
+      const furnitureObj = this.sceneObjects.find(obj => obj.furnitureRef === item);
+      const isSelected = furnitureObj?.selected || false;
 
       item.parts.forEach(part => {
         const modelMatrix = this.getFurniturePartMatrix(item, part);
@@ -632,6 +745,19 @@ export class RoomScene {
     furniture.position[1] = 0;
 
     this.furniture.push(furniture);
+    
+    // Add to scene objects
+    const sceneObj: SceneObject = {
+      id: furniture.id,
+      name: `${type.charAt(0).toUpperCase() + type.slice(1)} #${furniture.id.split('_')[1]}`,
+      type: 'furniture',
+      texture: null,
+      selected: false,
+      furnitureRef: furniture,
+      boundingBox: furniture.boundingBox
+    };
+    this.sceneObjects.push(sceneObj);
+    
     return furniture;
   }
 
@@ -639,13 +765,20 @@ export class RoomScene {
     const index = this.furniture.indexOf(furniture);
     if (index > -1) {
       this.furniture.splice(index, 1);
-      if (this.selectedFurniture === furniture) {
-        this.selectedFurniture = null;
+      
+      // Remove from scene objects
+      const objIndex = this.sceneObjects.findIndex(obj => obj.furnitureRef === furniture);
+      if (objIndex > -1) {
+        this.sceneObjects.splice(objIndex, 1);
+      }
+      
+      if (this.selectedObject?.furnitureRef === furniture) {
+        this.selectedObject = null;
       }
     }
   }
 
-  public selectFurniture(mouseX: number, mouseY: number): FurnitureObject | null {
+  public selectObject(mouseX: number, mouseY: number): SceneObject | null {
     this.raycaster.setFromCamera(
       mouseX,
       mouseY,
@@ -656,17 +789,77 @@ export class RoomScene {
       this.camera.position
     );
 
-    const intersected = this.raycaster.intersectFurniture(this.furniture);
-    this.selectedFurniture = intersected;
-    return intersected;
+    // Clear previous selection
+    this.sceneObjects.forEach(obj => obj.selected = false);
+
+    // Try to intersect with furniture first
+    const intersectedFurniture = this.raycaster.intersectFurniture(this.furniture);
+    if (intersectedFurniture) {
+      const furnitureObj = this.sceneObjects.find(obj => obj.furnitureRef === intersectedFurniture);
+      if (furnitureObj) {
+        furnitureObj.selected = true;
+        this.selectedObject = furnitureObj;
+        return furnitureObj;
+      }
+    }
+
+    // Try floor
+    const floorObj = this.sceneObjects.find(obj => obj.id === 'floor');
+    if (floorObj && floorObj.boundingBox) {
+      const distance = this.raycaster['intersectAABB'](floorObj.boundingBox.min, floorObj.boundingBox.max);
+      if (distance !== null) {
+        floorObj.selected = true;
+        this.selectedObject = floorObj;
+        return floorObj;
+      }
+    }
+
+    // Try walls
+    const wallsObj = this.sceneObjects.find(obj => obj.id === 'walls');
+    if (wallsObj && wallsObj.boundingBox) {
+      const distance = this.raycaster['intersectAABB'](wallsObj.boundingBox.min, wallsObj.boundingBox.max);
+      if (distance !== null) {
+        wallsObj.selected = true;
+        this.selectedObject = wallsObj;
+        return wallsObj;
+      }
+    }
+
+    this.selectedObject = null;
+    return null;
   }
 
-  public getSelectedFurniture(): FurnitureObject | null {
-    return this.selectedFurniture;
+  public getSelectedObject(): SceneObject | null {
+    return this.selectedObject;
   }
 
   public clearSelection() {
-    this.selectedFurniture = null;
+    this.sceneObjects.forEach(obj => obj.selected = false);
+    this.selectedObject = null;
+  }
+
+  public async loadTextureToSelected(url: string): Promise<boolean> {
+    if (!this.selectedObject) {
+      console.warn('No object selected');
+      return false;
+    }
+
+    const texture = await this.textureLoader.loadTexture(url);
+    if (texture) {
+      this.selectedObject.texture = texture;
+      
+      // Update main references for floor and walls
+      if (this.selectedObject.id === 'floor') {
+        this.floorTexture = texture;
+      } else if (this.selectedObject.id === 'walls') {
+        this.wallTexture = texture;
+      }
+      
+      console.log(`Texture loaded to ${this.selectedObject.name}`);
+      return true;
+    }
+    
+    return false;
   }
 
   public getAllFurniture(): FurnitureObject[] {
