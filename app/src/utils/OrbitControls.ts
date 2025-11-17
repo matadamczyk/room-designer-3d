@@ -1,175 +1,195 @@
-import { vec3 } from 'gl-matrix';
+import * as THREE from 'three';
+
+import { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+export type ControlMode = 'camera' | 'transform';
 
 export class OrbitControls {
-  private element: HTMLElement;
+  private controls: ThreeOrbitControls;
+  private camera: THREE.Camera;
   private enabled = true;
-
-  private target = vec3.fromValues(0, 1, 0);
-  private position = vec3.fromValues(5, 5, 5);
-  
-  private spherical = {
-    radius: 8.66,
-    theta: Math.PI / 4,  // azimuth
-    phi: Math.PI / 4     // elevation
-  };
-
-  private isDragging = false;
-  private lastMouseX = 0;
-  private lastMouseY = 0;
-
-  private rotateSpeed = 0.005;
-  private zoomSpeed = 0.1;
-  private minDistance = 2;
-  private maxDistance = 50;
+  private mode: ControlMode = 'camera';
   
   // WASD movement
-  private moveSpeed = 0.15;
+  private moveSpeed = 0.2;
+  private verticalSpeed = 0.15;
   private keys: { [key: string]: boolean } = {};
   private onUpdate: () => void;
+  private onModeChange?: (mode: ControlMode) => void;
 
-  constructor(element: HTMLElement, onUpdate: () => void) {
-    this.element = element;
+  constructor(
+    domElement: HTMLElement,
+    camera: THREE.Camera,
+    onUpdate: () => void,
+    onModeChange?: (mode: ControlMode) => void
+  ) {
+    this.camera = camera;
     this.onUpdate = onUpdate;
-
-    this.element.addEventListener('mousedown', this.onMouseDown.bind(this));
-    this.element.addEventListener('mousemove', this.onMouseMove.bind(this));
-    this.element.addEventListener('mouseup', this.onMouseUp.bind(this));
-    this.element.addEventListener('wheel', this.onWheel.bind(this));
-    this.element.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // Keyboard controls
+    this.onModeChange = onModeChange;
+    
+    // Initialize Three.js OrbitControls
+    this.controls = new ThreeOrbitControls(camera, domElement);
+    
+    // Configure controls
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.05;
+    this.controls.minDistance = 2;
+    this.controls.maxDistance = 50;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent going below ground
+    this.controls.minPolarAngle = 0.1;
+    this.controls.target.set(0, 1, 0);
+    this.controls.screenSpacePanning = true; // Better panning
+    
+    // Disable default keyboard controls (we handle them manually)
+    this.controls.keys = {
+      LEFT: '',
+      UP: '',
+      RIGHT: '',
+      BOTTOM: ''
+    } as any;
+    this.controls.listenToKeyEvents(domElement); // Prevent default key handling
+    
+    // Listen to changes
+    this.controls.addEventListener('change', onUpdate);
+    
+    // Keyboard controls for WASD movement and mode switching
     window.addEventListener('keydown', this.onKeyDown.bind(this));
     window.addEventListener('keyup', this.onKeyUp.bind(this));
-
-    this.updatePosition();
-    onUpdate();
-  }
-
-  private onMouseDown(e: MouseEvent) {
-    if (!this.enabled) return;
-    this.isDragging = true;
-    this.lastMouseX = e.clientX;
-    this.lastMouseY = e.clientY;
-  }
-
-  private onMouseMove(e: MouseEvent) {
-    if (!this.enabled || !this.isDragging) return;
-
-    const deltaX = e.clientX - this.lastMouseX;
-    const deltaY = e.clientY - this.lastMouseY;
-
-    this.spherical.theta -= deltaX * this.rotateSpeed;
-    this.spherical.phi -= deltaY * this.rotateSpeed;
-
-    // Clamp phi to avoid gimbal lock
-    this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
-
-    this.lastMouseX = e.clientX;
-    this.lastMouseY = e.clientY;
-
-    this.updatePosition();
-  }
-
-  private onMouseUp() {
-    this.isDragging = false;
-  }
-
-  private onWheel(e: WheelEvent) {
-    if (!this.enabled) return;
-    e.preventDefault();
-
-    this.spherical.radius += e.deltaY * this.zoomSpeed * 0.01;
-    this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
-
-    this.updatePosition();
-  }
-
-  private updatePosition() {
-    // Convert spherical to cartesian
-    const sinPhiRadius = Math.sin(this.spherical.phi) * this.spherical.radius;
-    
-    this.position[0] = this.target[0] + sinPhiRadius * Math.sin(this.spherical.theta);
-    this.position[1] = this.target[1] + Math.cos(this.spherical.phi) * this.spherical.radius;
-    this.position[2] = this.target[2] + sinPhiRadius * Math.cos(this.spherical.theta);
   }
 
   private onKeyDown(e: KeyboardEvent) {
     if (!this.enabled) return;
-    this.keys[e.key.toLowerCase()] = true;
+    
+    const key = e.key.toLowerCase();
+    
+    // Toggle mode with T key
+    if (key === 't') {
+      this.toggleMode();
+      e.preventDefault();
+      return;
+    }
+    
+    this.keys[key] = true;
   }
 
   private onKeyUp(e: KeyboardEvent) {
     this.keys[e.key.toLowerCase()] = false;
   }
 
+  public toggleMode() {
+    this.mode = this.mode === 'camera' ? 'transform' : 'camera';
+    this.controls.enabled = this.mode === 'camera';
+    console.log(`🔄 Mode switched to: ${this.mode.toUpperCase()}`);
+    if (this.onModeChange) {
+      this.onModeChange(this.mode);
+    }
+  }
+
+  public setMode(mode: ControlMode) {
+    this.mode = mode;
+    this.controls.enabled = mode === 'camera';
+    if (this.onModeChange) {
+      this.onModeChange(this.mode);
+    }
+  }
+
+  public getMode(): ControlMode {
+    return this.mode;
+  }
+
   public update() {
     if (!this.enabled) return;
 
-    // Calculate forward and right vectors based on camera orientation
-    const forward = vec3.create();
-    const right = vec3.create();
-    
-    // Forward direction (on XZ plane)
-    forward[0] = -Math.sin(this.spherical.theta);
-    forward[1] = 0;
-    forward[2] = -Math.cos(this.spherical.theta);
-    vec3.normalize(forward, forward);
-    
-    // Right direction (perpendicular to forward on XZ plane)
-    right[0] = Math.cos(this.spherical.theta);
-    right[1] = 0;
-    right[2] = -Math.sin(this.spherical.theta);
-    vec3.normalize(right, right);
+    // WASD movement only in camera mode
+    if (this.mode === 'camera') {
+      // Calculate forward and right vectors based on camera orientation
+      const forward = new THREE.Vector3();
+      const right = new THREE.Vector3();
+      
+      // Get camera direction on XZ plane (horizontal movement)
+      this.camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      
+      // Right direction (perpendicular to forward)
+      right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+      right.normalize();
 
-    let moved = false;
+      let moved = false;
+      const moveVector = new THREE.Vector3();
 
-    // WASD movement
-    if (this.keys['w']) {
-      vec3.scaleAndAdd(this.target, this.target, forward, this.moveSpeed);
-      moved = true;
-    }
-    if (this.keys['s']) {
-      vec3.scaleAndAdd(this.target, this.target, forward, -this.moveSpeed);
-      moved = true;
-    }
-    if (this.keys['a']) {
-      vec3.scaleAndAdd(this.target, this.target, right, -this.moveSpeed);
-      moved = true;
-    }
-    if (this.keys['d']) {
-      vec3.scaleAndAdd(this.target, this.target, right, this.moveSpeed);
-      moved = true;
+      // WASD movement (horizontal)
+      if (this.keys['w']) {
+        moveVector.addScaledVector(forward, this.moveSpeed);
+        moved = true;
+      }
+      if (this.keys['s']) {
+        moveVector.addScaledVector(forward, -this.moveSpeed);
+        moved = true;
+      }
+      if (this.keys['a']) {
+        moveVector.addScaledVector(right, -this.moveSpeed);
+        moved = true;
+      }
+      if (this.keys['d']) {
+        moveVector.addScaledVector(right, this.moveSpeed);
+        moved = true;
+      }
+
+      // Q/E for vertical movement (flying)
+      if (this.keys['q']) {
+        moveVector.y -= this.verticalSpeed;
+        moved = true;
+      }
+      if (this.keys['e']) {
+        moveVector.y += this.verticalSpeed;
+        moved = true;
+      }
+
+      if (moved) {
+        // Move both camera position and target together
+        this.camera.position.add(moveVector);
+        this.controls.target.add(moveVector);
+        
+        // Clamp target position
+        this.controls.target.y = Math.max(0.1, Math.min(10, this.controls.target.y));
+        this.controls.target.x = Math.max(-20, Math.min(20, this.controls.target.x));
+        this.controls.target.z = Math.max(-20, Math.min(20, this.controls.target.z));
+        
+        // Clamp camera position to match target constraints
+        this.camera.position.y = Math.max(0.1, Math.min(10, this.camera.position.y));
+        this.camera.position.x = Math.max(-20, Math.min(20, this.camera.position.x));
+        this.camera.position.z = Math.max(-20, Math.min(20, this.camera.position.z));
+        
+        this.onUpdate();
+      }
     }
 
-    // Q/E for vertical movement
-    if (this.keys['q']) {
-      this.target[1] -= this.moveSpeed;
-      moved = true;
-    }
-    if (this.keys['e']) {
-      this.target[1] += this.moveSpeed;
-      moved = true;
-    }
-
-    if (moved) {
-      this.updatePosition();
-      this.onUpdate();
-    }
+    // Update OrbitControls (for damping and camera position)
+    this.controls.update();
   }
 
-  public getPosition(): vec3 {
-    return this.position;
+  public getPosition(): THREE.Vector3 {
+    return this.camera.position;
   }
 
-  public getTarget(): vec3 {
-    return this.target;
+  public getTarget(): THREE.Vector3 {
+    return this.controls.target;
+  }
+
+  public getControls(): ThreeOrbitControls {
+    return this.controls;
   }
 
   public setEnabled(enabled: boolean) {
     this.enabled = enabled;
+    if (this.mode === 'camera') {
+      this.controls.enabled = enabled;
+    }
   }
 
   public dispose() {
+    this.controls.dispose();
     window.removeEventListener('keydown', this.onKeyDown.bind(this));
     window.removeEventListener('keyup', this.onKeyUp.bind(this));
   }

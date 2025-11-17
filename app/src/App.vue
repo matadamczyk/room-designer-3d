@@ -4,8 +4,12 @@
     <div class="info">
       <h1>3D Room Designer</h1>
       <p><strong>Mouse:</strong> Drag to rotate | Scroll to zoom</p>
-      <p><strong>WASD:</strong> Move camera | <strong>Q/E:</strong> Up/Down</p>
+      <p><strong>WASD:</strong> Move camera | <strong>Q/E:</strong> Fly Up/Down</p>
       <p><strong>Click:</strong> Select objects | Use GUI to edit</p>
+      <p :class="['mode-indicator', controlMode]">
+        <strong>Mode:</strong> {{ controlMode === 'camera' ? '📷 Camera' : '🎯 Transform' }} 
+        <span class="hint">(Press T to toggle)</span>
+      </p>
     </div>
   </div>
 </template>
@@ -13,15 +17,26 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { RoomScene, OrbitControls } from './utils';
+import type { ControlMode } from './utils/OrbitControls';
 import { SceneObject } from './types/FurnitureObject';
+import { ALL_TEXTURES, TEXTURE_CATEGORIES } from './config/textures';
 import GUI from 'lil-gui';
+import * as THREE from 'three';
 
 const canvas = ref<HTMLCanvasElement | null>(null);
+const controlMode = ref<ControlMode>('camera');
 
 let scene: RoomScene | null = null;
 let controls: OrbitControls | null = null;
 let gui: GUI | null = null;
 let animationId: number | null = null;
+
+// Transform mode variables
+let isDragging = false;
+let dragPlane: THREE.Plane | null = null;
+let dragOffset = new THREE.Vector3();
+let raycaster = new THREE.Raycaster();
+let mousePosition = new THREE.Vector2();
 
 // GUI folders
 let selectedObjectFolder: GUI | null = null;
@@ -45,58 +60,122 @@ onMounted(() => {
 
   // Add some initial furniture
   const table = scene.addFurniture('table');
-  table.position[0] = 0;
-  table.position[2] = -2;
+  table.group.position.set(0, 0, -2);
 
   const chair1 = scene.addFurniture('chair');
-  chair1.position[0] = -1.5;
-  chair1.position[2] = -2;
-  chair1.rotation = Math.PI / 4;
+  chair1.group.position.set(-1.5, 0, -2);
+  chair1.group.rotation.y = Math.PI / 4;
 
   const chair2 = scene.addFurniture('chair');
-  chair2.position[0] = 1.5;
-  chair2.position[2] = -2;
-  chair2.rotation = -Math.PI / 4;
+  chair2.group.position.set(1.5, 0, -2);
+  chair2.group.rotation.y = -Math.PI / 4;
 
   const bookshelf = scene.addFurniture('bookshelf');
-  bookshelf.position[0] = -8;
-  bookshelf.position[2] = 0;
+  bookshelf.group.position.set(-8, 0, 0);
 
   const sofa = scene.addFurniture('sofa');
-  sofa.position[0] = 0;
-  sofa.position[2] = 6;
-  sofa.rotation = Math.PI;
+  sofa.group.position.set(0, 0, 6);
+  sofa.group.rotation.y = Math.PI;
 
   // Initialize controls
-  controls = new OrbitControls(canvas.value, () => {
-    if (scene && controls) {
-      scene.setCamera(controls.getPosition(), controls.getTarget());
+  controls = new OrbitControls(
+    canvas.value,
+    scene.getCamera(),
+    () => {
+      // Controls will update camera automatically
+    },
+    (mode: ControlMode) => {
+      controlMode.value = mode;
+      // Update cursor style
+      if (canvas.value) {
+        canvas.value.style.cursor = mode === 'camera' ? 'grab' : 'crosshair';
+      }
     }
-  });
+  );
 
   // Setup GUI
   setupGUI();
 
-  // Mouse click for selection
-  canvas.value.addEventListener('click', (e) => {
-    if (!scene) return;
+  // Mouse handlers for both modes
+  canvas.value.addEventListener('mousedown', (e) => {
+    if (!scene || !controls) return;
+    
+    if (controls.getMode() === 'transform') {
+      // Transform mode - start dragging
+      const selected = scene.getSelectedObject();
+      if (selected && selected.type === 'furniture' && selected.furnitureRef) {
+        isDragging = true;
+        
+        const rect = canvas.value!.getBoundingClientRect();
+        mousePosition.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mousePosition.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        
+        raycaster.setFromCamera(mousePosition, scene.getCamera());
+        
+        // Create a plane at the object's Y position
+        const objectY = selected.furnitureRef.group.position.y;
+        dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -objectY);
+        
+        // Calculate offset from object position to intersection point
+        const intersection = new THREE.Vector3();
+        raycaster.ray.intersectPlane(dragPlane, intersection);
+        dragOffset.copy(selected.furnitureRef.group.position).sub(intersection);
+        
+        canvas.value!.style.cursor = 'grabbing';
+      }
+    } else {
+      // Camera mode - select object on click
+      const rect = canvas.value!.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      const selected = scene.selectObject(x, y);
+      updateSelectedObjectGUI(selected);
+    }
+  });
+
+  canvas.value.addEventListener('mousemove', (e) => {
+    if (!scene || !controls || !isDragging || controls.getMode() !== 'transform') return;
+    
+    const selected = scene.getSelectedObject();
+    if (!selected || !selected.furnitureRef || !dragPlane) return;
     
     const rect = canvas.value!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    mousePosition.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mousePosition.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     
-    const selected = scene.selectObject(x, y);
-    updateSelectedObjectGUI(selected);
+    raycaster.setFromCamera(mousePosition, scene.getCamera());
+    
+    const intersection = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
+      // Apply offset and update position
+      intersection.add(dragOffset);
+      
+      // Clamp to room bounds
+      intersection.x = Math.max(-9, Math.min(9, intersection.x));
+      intersection.z = Math.max(-9, Math.min(9, intersection.z));
+      
+      selected.furnitureRef.group.position.x = intersection.x;
+      selected.furnitureRef.group.position.z = intersection.z;
+      
+      // Update GUI if it's showing position controls
+      if (selectedObjectFolder) {
+        updateSelectedObjectGUI(selected);
+      }
+    }
+  });
+
+  canvas.value.addEventListener('mouseup', () => {
+    if (isDragging && canvas.value) {
+      isDragging = false;
+      canvas.value.style.cursor = controlMode.value === 'camera' ? 'grab' : 'crosshair';
+    }
   });
 
   // Render loop
   const render = () => {
     // Update controls (handles WASD movement)
     controls?.update();
-    
-    if (controls) {
-      scene?.setCamera(controls.getPosition(), controls.getTarget());
-    }
 
     scene?.render();
     animationId = requestAnimationFrame(render);
@@ -117,10 +196,27 @@ onMounted(() => {
 });
 
 function setupGUI() {
-  if (!scene) return;
+  if (!scene || !controls) return;
 
   gui = new GUI();
   gui.title('3D Room Designer');
+
+  // Control mode
+  const controlSettings = {
+    mode: controlMode.value,
+    toggleMode: () => {
+      controls?.toggleMode();
+      controlSettings.mode = controls?.getMode() || 'camera';
+    }
+  };
+  
+  const controlFolder = gui.addFolder('Controls');
+  controlFolder.add(controlSettings, 'mode', ['camera', 'transform']).name('🎮 Mode').onChange((value: string) => {
+    controls?.setMode(value as ControlMode);
+    controlMode.value = value as ControlMode;
+  });
+  controlFolder.add(controlSettings, 'toggleMode').name('🔄 Toggle Mode (T)');
+  controlFolder.open();
 
   // Scene controls
   const sceneFolder = gui.addFolder('Scene');
@@ -131,9 +227,12 @@ function setupGUI() {
       if (!scene) return;
       const furniture = scene.addFurniture(addFurnitureSettings.type as any);
       // Position randomly within room bounds
-      furniture.position[0] = (Math.random() - 0.5) * 8;
-      furniture.position[2] = (Math.random() - 0.5) * 8;
-      furniture.rotation = Math.random() * Math.PI * 2;
+      furniture.group.position.set(
+        (Math.random() - 0.5) * 8,
+        0,
+        (Math.random() - 0.5) * 8
+      );
+      furniture.group.rotation.y = Math.random() * Math.PI * 2;
       console.log(`Added ${addFurnitureSettings.type}`);
     }
   };
@@ -145,30 +244,66 @@ function setupGUI() {
   // Textures controls
   const texturesFolder = gui.addFolder('Textures');
   
+  // Create texture options for dropdown
+  const textureOptions: { [key: string]: string } = {};
+  ALL_TEXTURES.forEach(tex => {
+    const category = TEXTURE_CATEGORIES[tex.category];
+    const displayName = `${category} → ${tex.name}`;
+    textureOptions[displayName] = tex.url;
+  });
+  
   const textureSettings = {
-    info: 'Click object, then load texture',
-    loadTexture: () => {
+    info: 'Select object first, then choose texture',
+    selectedTexture: Object.keys(textureOptions)[0],
+    applyTexture: () => {
       if (!scene) return;
       const selected = scene.getSelectedObject();
       if (!selected) {
-        alert('Please select an object first (floor, walls, or furniture)');
+        alert('⚠️ Please select an object first!\n\nClick on:\n• Floor\n• Walls\n• Any furniture piece');
         return;
       }
-      const url = prompt(`Enter texture URL for ${selected.name}:`);
-      if (url) {
-        scene.loadTextureToSelected(url).then(success => {
-          if (success) {
-            alert(`Texture loaded to ${selected.name}!`);
-          } else {
-            alert('Failed to load texture');
-          }
-        });
+      const url = textureOptions[textureSettings.selectedTexture];
+      console.log(`Applying texture: ${textureSettings.selectedTexture}`);
+      scene.loadTextureToSelected(url).then(success => {
+        if (success) {
+          console.log(`✅ Texture applied to ${selected.name}!`);
+        } else {
+          alert(`❌ Failed to load texture\n\nTry selecting a procedural texture instead.`);
+        }
+      });
+    },
+    customURL: '',
+    applyCustom: () => {
+      if (!scene) return;
+      const selected = scene.getSelectedObject();
+      if (!selected) {
+        alert('⚠️ Please select an object first!\n\nClick on:\n• Floor\n• Walls\n• Any furniture piece');
+        return;
       }
+      const url = textureSettings.customURL.trim();
+      if (!url) {
+        alert('Please enter a texture URL');
+        return;
+      }
+      console.log(`Loading custom texture: ${url}`);
+      scene.loadTextureToSelected(url).then(success => {
+        if (success) {
+          alert(`✅ Custom texture loaded to ${selected.name}!`);
+        } else {
+          alert(`❌ Failed to load texture from:\n${url}\n\nPossible issues:\n• CORS restrictions\n• Invalid URL\n• Image not found\n\nTry using procedural textures instead!`);
+        }
+      });
     }
   };
 
   texturesFolder.add(textureSettings, 'info').name('ℹ️ Info').disable();
-  texturesFolder.add(textureSettings, 'loadTexture').name('📁 Load Texture to Selected');
+  texturesFolder.add(textureSettings, 'selectedTexture', Object.keys(textureOptions)).name('🎨 Texture');
+  texturesFolder.add(textureSettings, 'applyTexture').name('✨ Apply Selected Texture');
+  
+  // Custom URL section
+  const customFolder = texturesFolder.addFolder('Custom URL (Advanced)');
+  customFolder.add(textureSettings, 'customURL').name('🔗 URL');
+  customFolder.add(textureSettings, 'applyCustom').name('📥 Load Custom URL');
 
   // Lighting controls
   const lightingFolder = gui.addFolder('Lighting');
@@ -217,13 +352,13 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
     const furniture = selected.furnitureRef;
     
     const settings = {
-      posX: furniture.position[0],
-      posY: furniture.position[1],
-      posZ: furniture.position[2],
-      rotation: furniture.rotation * (180 / Math.PI),
-      scaleX: furniture.scale[0],
-      scaleY: furniture.scale[1],
-      scaleZ: furniture.scale[2],
+      posX: furniture.group.position.x,
+      posY: furniture.group.position.y,
+      posZ: furniture.group.position.z,
+      rotation: furniture.group.rotation.y * (180 / Math.PI),
+      scaleX: furniture.group.scale.x,
+      scaleY: furniture.group.scale.y,
+      scaleZ: furniture.group.scale.z,
       delete: () => {
         if (!scene || !furniture) return;
         scene.removeFurniture(furniture);
@@ -239,31 +374,31 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
     // Position controls
     const posFolder = selectedObjectFolder.addFolder('Position');
     posFolder.add(settings, 'posX', -9, 9, 0.1).name('X').onChange((value: number) => {
-      furniture.position[0] = value;
+      furniture.group.position.x = value;
     });
     posFolder.add(settings, 'posY', 0, 4, 0.1).name('Y').onChange((value: number) => {
-      furniture.position[1] = value;
+      furniture.group.position.y = value;
     });
     posFolder.add(settings, 'posZ', -9, 9, 0.1).name('Z').onChange((value: number) => {
-      furniture.position[2] = value;
+      furniture.group.position.z = value;
     });
     posFolder.open();
 
     // Rotation control
     selectedObjectFolder.add(settings, 'rotation', 0, 360, 1).name('Rotation (°)').onChange((value: number) => {
-      furniture.rotation = value * (Math.PI / 180);
+      furniture.group.rotation.y = value * (Math.PI / 180);
     });
 
     // Scale controls
     const scaleFolder = selectedObjectFolder.addFolder('Scale');
     scaleFolder.add(settings, 'scaleX', 0.5, 3, 0.1).name('X').onChange((value: number) => {
-      furniture.scale[0] = value;
+      furniture.group.scale.x = value;
     });
     scaleFolder.add(settings, 'scaleY', 0.5, 3, 0.1).name('Y').onChange((value: number) => {
-      furniture.scale[1] = value;
+      furniture.group.scale.y = value;
     });
     scaleFolder.add(settings, 'scaleZ', 0.5, 3, 0.1).name('Z').onChange((value: number) => {
-      furniture.scale[2] = value;
+      furniture.group.scale.z = value;
     });
 
     // Action buttons
@@ -325,5 +460,30 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
   margin: 5px 0;
   font-size: 0.85em;
   line-height: 1.4;
+}
+
+.mode-indicator {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.mode-indicator.camera {
+  background: rgba(59, 130, 246, 0.3);
+  border: 2px solid rgba(59, 130, 246, 0.6);
+}
+
+.mode-indicator.transform {
+  background: rgba(234, 179, 8, 0.3);
+  border: 2px solid rgba(234, 179, 8, 0.6);
+}
+
+.mode-indicator .hint {
+  font-size: 0.75em;
+  opacity: 0.8;
+  font-weight: normal;
 }
 </style>
