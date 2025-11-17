@@ -1,5 +1,7 @@
 # 3D Room Designer
 
+![Screenshot aplikacji](./app/screenshots/demo.png)
+
 ## Opis projektu
 
 Aplikacja pozwala na interaktywne projektowanie pomieszczeń w przestrzeni 3D. Użytkownik może dodawać meble (stoły, krzesła, regały, sofy, lampy), przesuwać je, obracać i skalować. Całość renderowana jest w czasie rzeczywistym z realistycznym oświetleniem i cieniami.
