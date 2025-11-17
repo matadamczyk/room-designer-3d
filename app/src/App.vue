@@ -19,7 +19,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { RoomScene, OrbitControls } from './utils';
 import type { ControlMode } from './utils/OrbitControls';
 import { SceneObject } from './types/FurnitureObject';
-import { ALL_TEXTURES, TEXTURE_CATEGORIES } from './config/textures';
+import { ALL_TEXTURES } from './config/textures';
 import GUI from 'lil-gui';
 import * as THREE from 'three';
 
@@ -31,20 +31,17 @@ let controls: OrbitControls | null = null;
 let gui: GUI | null = null;
 let animationId: number | null = null;
 
-// Transform mode variables
 let isDragging = false;
 let dragPlane: THREE.Plane | null = null;
 let dragOffset = new THREE.Vector3();
 let raycaster = new THREE.Raycaster();
 let mousePosition = new THREE.Vector2();
 
-// GUI folders
 let selectedObjectFolder: GUI | null = null;
 
 onMounted(() => {
   if (!canvas.value) return;
 
-  // Resize canvas to window
   const resizeCanvas = () => {
     if (!canvas.value) return;
     canvas.value.width = window.innerWidth;
@@ -55,10 +52,8 @@ onMounted(() => {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
-  // Initialize scene
   scene = new RoomScene(canvas.value);
 
-  // Add some initial furniture
   const table = scene.addFurniture('table');
   table.group.position.set(0, 0, -2);
 
@@ -77,31 +72,25 @@ onMounted(() => {
   sofa.group.position.set(0, 0, 6);
   sofa.group.rotation.y = Math.PI;
 
-  // Initialize controls
   controls = new OrbitControls(
     canvas.value,
     scene.getCamera(),
     () => {
-      // Controls will update camera automatically
     },
     (mode: ControlMode) => {
       controlMode.value = mode;
-      // Update cursor style
       if (canvas.value) {
         canvas.value.style.cursor = mode === 'camera' ? 'grab' : 'crosshair';
       }
     }
   );
 
-  // Setup GUI
   setupGUI();
 
-  // Mouse handlers for both modes
   canvas.value.addEventListener('mousedown', (e) => {
     if (!scene || !controls) return;
     
     if (controls.getMode() === 'transform') {
-      // Transform mode - start dragging
       const selected = scene.getSelectedObject();
       if (selected && selected.type === 'furniture' && selected.furnitureRef) {
         isDragging = true;
@@ -112,11 +101,9 @@ onMounted(() => {
         
         raycaster.setFromCamera(mousePosition, scene.getCamera());
         
-        // Create a plane at the object's Y position
         const objectY = selected.furnitureRef.group.position.y;
         dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -objectY);
         
-        // Calculate offset from object position to intersection point
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(dragPlane, intersection);
         dragOffset.copy(selected.furnitureRef.group.position).sub(intersection);
@@ -124,7 +111,6 @@ onMounted(() => {
         canvas.value!.style.cursor = 'grabbing';
       }
     } else {
-      // Camera mode - select object on click
       const rect = canvas.value!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -148,17 +134,14 @@ onMounted(() => {
     
     const intersection = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
-      // Apply offset and update position
       intersection.add(dragOffset);
       
-      // Clamp to room bounds
       intersection.x = Math.max(-9, Math.min(9, intersection.x));
       intersection.z = Math.max(-9, Math.min(9, intersection.z));
       
       selected.furnitureRef.group.position.x = intersection.x;
       selected.furnitureRef.group.position.z = intersection.z;
       
-      // Update GUI if it's showing position controls
       if (selectedObjectFolder) {
         updateSelectedObjectGUI(selected);
       }
@@ -172,9 +155,7 @@ onMounted(() => {
     }
   });
 
-  // Render loop
   const render = () => {
-    // Update controls (handles WASD movement)
     controls?.update();
 
     scene?.render();
@@ -183,7 +164,6 @@ onMounted(() => {
 
   render();
 
-  // Cleanup
   onUnmounted(() => {
     window.removeEventListener('resize', resizeCanvas);
     if (animationId !== null) {
@@ -201,7 +181,6 @@ function setupGUI() {
   gui = new GUI();
   gui.title('3D Room Designer');
 
-  // Control mode
   const controlSettings = {
     mode: controlMode.value,
     toggleMode: () => {
@@ -218,7 +197,6 @@ function setupGUI() {
   controlFolder.add(controlSettings, 'toggleMode').name('🔄 Toggle Mode (T)');
   controlFolder.open();
 
-  // Scene controls
   const sceneFolder = gui.addFolder('Scene');
   
   const addFurnitureSettings = {
@@ -226,7 +204,6 @@ function setupGUI() {
     add: () => {
       if (!scene) return;
       const furniture = scene.addFurniture(addFurnitureSettings.type as any);
-      // Position randomly within room bounds
       furniture.group.position.set(
         (Math.random() - 0.5) * 8,
         0,
@@ -241,14 +218,11 @@ function setupGUI() {
   sceneFolder.add(addFurnitureSettings, 'add').name('➕ Add Furniture');
   sceneFolder.open();
 
-  // Textures controls
   const texturesFolder = gui.addFolder('Textures');
   
-  // Create texture options for dropdown
   const textureOptions: { [key: string]: string } = {};
   ALL_TEXTURES.forEach(tex => {
-    const category = TEXTURE_CATEGORIES[tex.category];
-    const displayName = `${category} → ${tex.name}`;
+    const displayName = tex.name;
     textureOptions[displayName] = tex.url;
   });
   
@@ -296,16 +270,13 @@ function setupGUI() {
     }
   };
 
-  texturesFolder.add(textureSettings, 'info').name('ℹ️ Info').disable();
   texturesFolder.add(textureSettings, 'selectedTexture', Object.keys(textureOptions)).name('🎨 Texture');
   texturesFolder.add(textureSettings, 'applyTexture').name('✨ Apply Selected Texture');
   
-  // Custom URL section
   const customFolder = texturesFolder.addFolder('Custom URL (Advanced)');
   customFolder.add(textureSettings, 'customURL').name('🔗 URL');
   customFolder.add(textureSettings, 'applyCustom').name('📥 Load Custom URL');
 
-  // Lighting controls
   const lightingFolder = gui.addFolder('Lighting');
   
   const lightSettings = {
@@ -329,14 +300,12 @@ function setupGUI() {
     scene?.setLightIntensity(value);
   });
   lightingFolder.add(lightSettings, 'shadows').name('Shadows').onChange((value: boolean) => {
-    if (scene) scene.shadowsEnabled = value;
+    console.log('Shadows enabled:', value);
+    scene?.setShadowsEnabled(value);
   });
-
-  // Selected object folder (created dynamically)
 }
 
 function updateSelectedObjectGUI(selected: SceneObject | null) {
-  // Remove existing folder
   if (selectedObjectFolder) {
     selectedObjectFolder.destroy();
     selectedObjectFolder = null;
@@ -344,10 +313,8 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
 
   if (!selected || !gui || !scene) return;
 
-  // Create new folder for selected object
   selectedObjectFolder = gui.addFolder(`Selected: ${selected.name}`);
 
-  // If it's furniture, show transform controls
   if (selected.type === 'furniture' && selected.furnitureRef) {
     const furniture = selected.furnitureRef;
     
@@ -371,7 +338,6 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
       }
     };
 
-    // Position controls
     const posFolder = selectedObjectFolder.addFolder('Position');
     posFolder.add(settings, 'posX', -9, 9, 0.1).name('X').onChange((value: number) => {
       furniture.group.position.x = value;
@@ -384,12 +350,10 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
     });
     posFolder.open();
 
-    // Rotation control
     selectedObjectFolder.add(settings, 'rotation', 0, 360, 1).name('Rotation (°)').onChange((value: number) => {
       furniture.group.rotation.y = value * (Math.PI / 180);
     });
 
-    // Scale controls
     const scaleFolder = selectedObjectFolder.addFolder('Scale');
     scaleFolder.add(settings, 'scaleX', 0.5, 3, 0.1).name('X').onChange((value: number) => {
       furniture.group.scale.x = value;
@@ -401,11 +365,9 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
       furniture.group.scale.z = value;
     });
 
-    // Action buttons
     selectedObjectFolder.add(settings, 'deselect').name('↩ Deselect');
     selectedObjectFolder.add(settings, 'delete').name('🗑 Delete');
   } else {
-    // For floor and walls, just show info and deselect
     const settings = {
       type: selected.type,
       deselect: () => {
@@ -485,5 +447,14 @@ function updateSelectedObjectGUI(selected: SceneObject | null) {
   font-size: 0.75em;
   opacity: 0.8;
   font-weight: normal;
+}
+</style>
+
+<style>
+.lil-gui.lil-auto-place,
+.lil-gui.autoPlace {
+  margin-top: 10px !important;
+  border-radius: 5px !important;
+  right: 2px !important;
 }
 </style>

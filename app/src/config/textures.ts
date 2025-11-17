@@ -4,7 +4,6 @@ export interface TextureOption {
   category: 'wood' | 'wall' | 'tile' | 'fabric' | 'metal';
 }
 
-// Procedural textures - these are generated at runtime, always work
 export const PROCEDURAL_TEXTURES: TextureOption[] = [
   { name: '🌲 Wood Parquet (Procedural)', url: 'procedural://wood-parquet', category: 'wood' },
   { name: '🎨 Painted Wall (Procedural)', url: 'procedural://painted-wall', category: 'wall' },
@@ -15,8 +14,6 @@ export const PROCEDURAL_TEXTURES: TextureOption[] = [
   { name: '✨ Metal (Procedural)', url: 'procedural://metal', category: 'metal' },
 ];
 
-// External textures - from CORS-friendly sources
-// Using smaller images and CORS proxies when needed
 export const EXTERNAL_TEXTURES: TextureOption[] = [
   {
     name: '🌳 Dark Wood Floor',

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+
 import { FurnitureObject, SceneObject } from '../types/FurnitureObject';
+
 import { FurnitureFactory } from './FurnitureFactory';
 
 export class RoomScene {
@@ -10,28 +12,23 @@ export class RoomScene {
   private raycaster: THREE.Raycaster;
   private mouse: THREE.Vector2;
   
-  // Utilities
   private textureLoader: THREE.TextureLoader;
   private furnitureFactory: FurnitureFactory;
   
-  // Scene objects
   private floor: THREE.Mesh | null = null;
   private walls: THREE.Group | null = null;
   private furniture: FurnitureObject[] = [];
   private sceneObjects: SceneObject[] = [];
   private selectedObject: SceneObject | null = null;
   
-  // Lights
   private ambientLight: THREE.AmbientLight;
   private directionalLight: THREE.DirectionalLight;
   
-  // Settings
   public shadowsEnabled = true;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     
-    // Initialize Three.js renderer
     this.renderer = new THREE.WebGLRenderer({ 
       canvas,
       antialias: true 
@@ -39,13 +36,11 @@ export class RoomScene {
     this.renderer.setSize(canvas.width, canvas.height);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows with PCF
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
-    // Initialize scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87ceeb); // Sky blue
+    this.scene.background = new THREE.Color(0x87ceeb);
     
-    // Initialize camera
     this.camera = new THREE.PerspectiveCamera(
       45,
       canvas.width / canvas.height,
@@ -55,26 +50,21 @@ export class RoomScene {
     this.camera.position.set(8, 6, 8);
     this.camera.lookAt(0, 1, 0);
     
-    // Initialize raycaster and mouse
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     
-    // Initialize utilities
     this.textureLoader = new THREE.TextureLoader();
-    // Configure CORS for external textures
     this.textureLoader.setCrossOrigin('anonymous');
     
     this.furnitureFactory = new FurnitureFactory();
     
-    // Initialize lights
-    this.ambientLight = new THREE.AmbientLight(0x4d4d59, 0.6);
+    this.ambientLight = new THREE.AmbientLight(0x4d4d59, 0.3);
     this.scene.add(this.ambientLight);
     
-    this.directionalLight = new THREE.DirectionalLight(0xfff2f2, 1.0);
+    this.directionalLight = new THREE.DirectionalLight(0xfff2f2, 0.8);
     this.directionalLight.position.set(5, 10, 5);
     this.directionalLight.castShadow = true;
     
-    // Configure shadow properties
     this.directionalLight.shadow.mapSize.width = 2048;
     this.directionalLight.shadow.mapSize.height = 2048;
     this.directionalLight.shadow.camera.near = 0.5;
@@ -87,15 +77,12 @@ export class RoomScene {
     
     this.scene.add(this.directionalLight);
     
-    // Create room
     this.createRoom();
     
-    // Initialize scene objects
     this.initializeSceneObjects();
   }
 
   private createRoom() {
-    // Create floor
     const floorGeometry = new THREE.PlaneGeometry(20, 20);
     const floorMaterial = new THREE.MeshStandardMaterial({ 
       color: 0xffffff,
@@ -108,87 +95,328 @@ export class RoomScene {
     this.floor.name = 'floor';
     this.scene.add(this.floor);
     
-    // Load procedural floor texture
     this.createProceduralFloorTexture();
     
-    // Create walls
     this.walls = new THREE.Group();
     this.walls.name = 'walls';
     
-    const wallMaterial = new THREE.MeshStandardMaterial({ 
+    const wallMaterial = new THREE.MeshPhongMaterial({ 
       color: 0xffffff,
       side: THREE.DoubleSide,
-      metalness: 0.0,
-      roughness: 1.0
+      specular: 0x111111,
+      shininess: 30
     });
     
     const size = 10;
     const height = 5;
     
-    // Back wall
-    const backWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(size * 2, height),
+    const windowWidth = 3;
+    const windowHeight = 2;
+    const windowY = 2.5;
+    
+    const backLeftWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - windowWidth) / 2, height),
       wallMaterial.clone()
     );
-    backWall.position.set(0, height / 2, -size);
-    backWall.receiveShadow = true;
-    this.walls.add(backWall);
+    backLeftWall.position.set(-(size * 2 - windowWidth) / 4 - windowWidth / 2, height / 2, -size);
+    backLeftWall.receiveShadow = true;
+    this.walls.add(backLeftWall);
     
-    // Right wall
-    const rightWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(size * 2, height),
+    const backRightWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - windowWidth) / 2, height),
       wallMaterial.clone()
     );
-    rightWall.position.set(size, height / 2, 0);
-    rightWall.rotation.y = -Math.PI / 2;
-    rightWall.receiveShadow = true;
-    this.walls.add(rightWall);
+    backRightWall.position.set((size * 2 - windowWidth) / 4 + windowWidth / 2, height / 2, -size);
+    backRightWall.receiveShadow = true;
+    this.walls.add(backRightWall);
     
-    // Left wall
-    const leftWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(size * 2, height),
+    const backTopWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(windowWidth, height - windowY - windowHeight / 2),
       wallMaterial.clone()
     );
-    leftWall.position.set(-size, height / 2, 0);
-    leftWall.rotation.y = Math.PI / 2;
-    leftWall.receiveShadow = true;
-    this.walls.add(leftWall);
+    backTopWall.position.set(0, windowY + windowHeight / 2 + (height - windowY - windowHeight / 2) / 2, -size);
+    backTopWall.receiveShadow = true;
+    this.walls.add(backTopWall);
     
-    // Front wall (with door opening) - split into parts
-    // Left part
+    const backBottomWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(windowWidth, windowY - windowHeight / 2),
+      wallMaterial.clone()
+    );
+    backBottomWall.position.set(0, (windowY - windowHeight / 2) / 2, -size);
+    backBottomWall.receiveShadow = true;
+    this.walls.add(backBottomWall);
+    
+    this.createWindow(0, windowY, -size + 0.01, windowWidth, windowHeight, 0);
+    
+    const rightWindowWidth = 2.5;
+    const rightWindowHeight = 2;
+    const rightWindowY = 2.5;
+    
+    const rightLeftWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - rightWindowWidth) / 2, height),
+      wallMaterial.clone()
+    );
+    rightLeftWall.position.set(size, height / 2, -(size * 2 - rightWindowWidth) / 4 - rightWindowWidth / 2);
+    rightLeftWall.rotation.y = -Math.PI / 2;
+    rightLeftWall.receiveShadow = true;
+    this.walls.add(rightLeftWall);
+    
+    const rightRightWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - rightWindowWidth) / 2, height),
+      wallMaterial.clone()
+    );
+    rightRightWall.position.set(size, height / 2, (size * 2 - rightWindowWidth) / 4 + rightWindowWidth / 2);
+    rightRightWall.rotation.y = -Math.PI / 2;
+    rightRightWall.receiveShadow = true;
+    this.walls.add(rightRightWall);
+    
+    const rightTopWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(rightWindowWidth, height - rightWindowY - rightWindowHeight / 2),
+      wallMaterial.clone()
+    );
+    rightTopWall.position.set(size, rightWindowY + rightWindowHeight / 2 + (height - rightWindowY - rightWindowHeight / 2) / 2, 0);
+    rightTopWall.rotation.y = -Math.PI / 2;
+    rightTopWall.receiveShadow = true;
+    this.walls.add(rightTopWall);
+    
+    const rightBottomWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(rightWindowWidth, rightWindowY - rightWindowHeight / 2),
+      wallMaterial.clone()
+    );
+    rightBottomWall.position.set(size, (rightWindowY - rightWindowHeight / 2) / 2, 0);
+    rightBottomWall.rotation.y = -Math.PI / 2;
+    rightBottomWall.receiveShadow = true;
+    this.walls.add(rightBottomWall);
+    
+    this.createWindow(size - 0.01, rightWindowY, 0, rightWindowWidth, rightWindowHeight, -Math.PI / 2);
+    
+    const leftWindowWidth = 2.5;
+    const leftWindowHeight = 2;
+    const leftWindowY = 2.5;
+    
+    const leftLeftWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - leftWindowWidth) / 2, height),
+      wallMaterial.clone()
+    );
+    leftLeftWall.position.set(-size, height / 2, (size * 2 - leftWindowWidth) / 4 + leftWindowWidth / 2);
+    leftLeftWall.rotation.y = Math.PI / 2;
+    leftLeftWall.receiveShadow = true;
+    this.walls.add(leftLeftWall);
+    
+    const leftRightWall = new THREE.Mesh(
+      new THREE.PlaneGeometry((size * 2 - leftWindowWidth) / 2, height),
+      wallMaterial.clone()
+    );
+    leftRightWall.position.set(-size, height / 2, -(size * 2 - leftWindowWidth) / 4 - leftWindowWidth / 2);
+    leftRightWall.rotation.y = Math.PI / 2;
+    leftRightWall.receiveShadow = true;
+    this.walls.add(leftRightWall);
+    
+    const leftTopWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(leftWindowWidth, height - leftWindowY - leftWindowHeight / 2),
+      wallMaterial.clone()
+    );
+    leftTopWall.position.set(-size, leftWindowY + leftWindowHeight / 2 + (height - leftWindowY - leftWindowHeight / 2) / 2, 0);
+    leftTopWall.rotation.y = Math.PI / 2;
+    leftTopWall.receiveShadow = true;
+    this.walls.add(leftTopWall);
+    
+    const leftBottomWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(leftWindowWidth, leftWindowY - leftWindowHeight / 2),
+      wallMaterial.clone()
+    );
+    leftBottomWall.position.set(-size, (leftWindowY - leftWindowHeight / 2) / 2, 0);
+    leftBottomWall.rotation.y = Math.PI / 2;
+    leftBottomWall.receiveShadow = true;
+    this.walls.add(leftBottomWall);
+    
+    this.createWindow(-size + 0.01, leftWindowY, 0, leftWindowWidth, leftWindowHeight, Math.PI / 2);
+    
+    const doorWidth = 2;
+    const doorHeight = 3.5;
+    
+    const leftWallWidth = size - doorWidth / 2;
     const frontLeftWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.5, height),
+      new THREE.PlaneGeometry(leftWallWidth, height),
       wallMaterial.clone()
     );
-    frontLeftWall.position.set(-6.75, height / 2, size);
+    frontLeftWall.position.set(-size + leftWallWidth / 2, height / 2, size);
     frontLeftWall.rotation.y = Math.PI;
     frontLeftWall.receiveShadow = true;
     this.walls.add(frontLeftWall);
     
-    // Right part
+    const rightWallWidth = size - doorWidth / 2;
     const frontRightWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.5, height),
+      new THREE.PlaneGeometry(rightWallWidth, height),
       wallMaterial.clone()
     );
-    frontRightWall.position.set(6.75, height / 2, size);
+    frontRightWall.position.set(size - rightWallWidth / 2, height / 2, size);
     frontRightWall.rotation.y = Math.PI;
     frontRightWall.receiveShadow = true;
     this.walls.add(frontRightWall);
     
-    // Top part (above door)
+    const topWallHeight = height - doorHeight;
     const frontTopWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 1.5),
+      new THREE.PlaneGeometry(doorWidth, topWallHeight),
       wallMaterial.clone()
     );
-    frontTopWall.position.set(0, height - 0.75, size);
+    frontTopWall.position.set(0, doorHeight + topWallHeight / 2, size);
     frontTopWall.rotation.y = Math.PI;
     frontTopWall.receiveShadow = true;
     this.walls.add(frontTopWall);
     
     this.scene.add(this.walls);
     
-    // Load procedural wall texture
+    this.createDoor(0, 0, size - 0.2, doorWidth, doorHeight);
+    
     this.createProceduralWallTexture();
+  }
+
+  private createWindow(x: number, y: number, z: number, width: number, height: number, rotationY: number) {
+    const windowGroup = new THREE.Group();
+    windowGroup.name = 'window';
+    
+    const frameMaterial = new THREE.MeshPhongMaterial({
+      color: 0x8b4513,
+      specular: 0x222222,
+      shininess: 20
+    });
+    
+    const frameThickness = 0.15;
+    const frameDepth = 0.2;
+    
+    const topFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(width + frameThickness * 2, frameThickness, frameDepth),
+      frameMaterial
+    );
+    topFrame.position.set(0, height / 2, 0);
+    windowGroup.add(topFrame);
+    
+    const bottomFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(width + frameThickness * 2, frameThickness, frameDepth),
+      frameMaterial
+    );
+    bottomFrame.position.set(0, -height / 2, 0);
+    windowGroup.add(bottomFrame);
+    
+    const leftFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, height, frameDepth),
+      frameMaterial
+    );
+    leftFrame.position.set(-width / 2, 0, 0);
+    windowGroup.add(leftFrame);
+    
+    const rightFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, height, frameDepth),
+      frameMaterial
+    );
+    rightFrame.position.set(width / 2, 0, 0);
+    windowGroup.add(rightFrame);
+    
+    const glassMaterial = new THREE.MeshPhongMaterial({
+      color: 0x87ceeb,
+      transparent: true,
+      opacity: 0.3,
+      specular: 0xffffff,
+      shininess: 100
+    });
+    
+    const glass = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      glassMaterial
+    );
+    glass.position.z = frameDepth / 2 + 0.01;
+    windowGroup.add(glass);
+    
+    const sillMaterial = new THREE.MeshPhongMaterial({
+      color: 0xffffff,
+      specular: 0x111111,
+      shininess: 30
+    });
+    
+    const sill = new THREE.Mesh(
+      new THREE.BoxGeometry(width + 0.2, 0.1, 0.3),
+      sillMaterial
+    );
+    sill.position.set(0, -height / 2 - 0.05, 0.1);
+    windowGroup.add(sill);
+    
+    windowGroup.position.set(x, y, z);
+    windowGroup.rotation.y = rotationY;
+    windowGroup.receiveShadow = true;
+    windowGroup.castShadow = true;
+    
+    this.scene.add(windowGroup);
+  }
+
+  private createDoor(x: number, y: number, z: number, width: number, height: number) {
+    const doorGroup = new THREE.Group();
+    doorGroup.name = 'door';
+    
+    const frameMaterial = new THREE.MeshPhongMaterial({
+      color: 0x8b4513,
+      specular: 0x222222,
+      shininess: 20
+    });
+    
+    const frameThickness = 0.2;
+    const frameDepth = 0.15;
+    
+    const leftFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, height + frameThickness * 2, frameDepth),
+      frameMaterial
+    );
+    leftFrame.position.set(-width / 2 - frameThickness / 2, height / 2, 0);
+    doorGroup.add(leftFrame);
+    
+    const rightFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, height + frameThickness * 2, frameDepth),
+      frameMaterial
+    );
+    rightFrame.position.set(width / 2 + frameThickness / 2, height / 2, 0);
+    doorGroup.add(rightFrame);
+    
+    const topFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(width + frameThickness * 2, frameThickness, frameDepth),
+      frameMaterial
+    );
+    topFrame.position.set(0, height + frameThickness / 2, 0);
+    doorGroup.add(topFrame);
+    
+    const doorMaterial = new THREE.MeshPhongMaterial({
+      color: 0x654321,
+      specular: 0x111111,
+      shininess: 25
+    });
+    
+    const doorPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(width, height, 0.1),
+      doorMaterial
+    );
+    doorPanel.position.set(0, height / 2, -frameDepth / 2 - 0.05);
+    doorPanel.castShadow = true;
+    doorPanel.receiveShadow = true;
+    doorGroup.add(doorPanel);
+    
+    const handleMaterial = new THREE.MeshPhongMaterial({
+      color: 0xc0c0c0,
+      specular: 0xffffff,
+      shininess: 100
+    });
+    
+    const handle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 0.1, 16),
+      handleMaterial
+    );
+    handle.rotation.z = Math.PI / 2;
+    handle.position.set(width / 2 - 0.2, height / 2, -frameDepth / 2 - 0.05);
+    doorGroup.add(handle);
+    
+    doorGroup.position.set(x, y, z);
+    doorGroup.receiveShadow = true;
+    doorGroup.castShadow = true;
+    
+    this.scene.add(doorGroup);
   }
 
   private createProceduralFloorTexture() {
@@ -209,14 +437,11 @@ export class RoomScene {
         const localX = x % plankWidth;
         const localY = y % plankHeight;
         
-        // Wood grain effect
         const grain = Math.sin(localX * 0.3 + plankY * 13) * 8;
         const knots = Math.sin(localX * 0.1) * Math.sin(localY * 0.5) * 5;
         
-        // Base wood color (warm brown)
         const base = 120 + grain + knots + (Math.random() - 0.5) * 15;
         
-        // Plank borders (darker)
         const borderSize = 2;
         const isBorder = localX < borderSize || localX >= plankWidth - borderSize || 
                          localY < borderSize || localY >= plankHeight - borderSize;
@@ -243,46 +468,28 @@ export class RoomScene {
   private createProceduralWallTexture() {
     if (!this.walls) return;
     
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const texture = this.createProceduralTexture('brick');
+    if (!texture) return;
     
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        // Base color - warm beige
-        const baseR = 235;
-        const baseG = 225;
-        const baseB = 210;
-        
-        // Add subtle paint texture variation
-        const variation = (Math.sin(x * 0.02) * Math.cos(y * 0.03) + 
-                          Math.sin(x * 0.05 + y * 0.04)) * 8;
-        
-        // Small random imperfections
-        const noise = (Math.random() - 0.5) * 10;
-        
-        const r = Math.max(0, Math.min(255, baseR + variation + noise));
-        const g = Math.max(0, Math.min(255, baseG + variation + noise));
-        const b = Math.max(0, Math.min(255, baseB + variation + noise));
-        
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    
-    const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(4, 2);
     
-    // Apply texture to all wall parts
+    const brickWidth = 1.5;
+    const brickHeight = 1.5;
+    
     this.walls.children.forEach(child => {
       if (child instanceof THREE.Mesh) {
-        const material = child.material as THREE.MeshStandardMaterial;
+        const geometry = child.geometry as THREE.PlaneGeometry;
+        const material = child.material as THREE.MeshPhongMaterial;
+        
+        const wallWidth = geometry.parameters.width;
+        const wallHeight = geometry.parameters.height;
+        
+        const repeatX = wallWidth / brickWidth;
+        const repeatY = wallHeight / brickHeight;
+        
         material.map = texture.clone();
-        material.map.repeat.set(4, 2);
+        material.map.repeat.set(repeatX, repeatY);
         material.needsUpdate = true;
       }
     });
@@ -320,8 +527,6 @@ export class RoomScene {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // Public API methods
-  
   public setCamera(position: THREE.Vector3, target: THREE.Vector3) {
     this.camera.position.copy(position);
     this.camera.lookAt(target);
@@ -368,13 +573,17 @@ export class RoomScene {
         break;
       case 'lamp':
         furniture = this.furnitureFactory.createLamp();
+        furniture.group.traverse((child) => {
+          if (child instanceof THREE.PointLight) {
+            child.visible = true;
+          }
+        });
         break;
     }
 
     this.furniture.push(furniture);
     this.scene.add(furniture.group);
     
-    // Add to scene objects
     const sceneObj: SceneObject = {
       id: furniture.id,
       name: `${type.charAt(0).toUpperCase() + type.slice(1)} #${furniture.id.split('_')[1]}`,
@@ -394,7 +603,6 @@ export class RoomScene {
       this.furniture.splice(index, 1);
       this.scene.remove(furniture.group);
       
-      // Remove from scene objects
       const objIndex = this.sceneObjects.findIndex(obj => obj.furnitureRef === furniture);
       if (objIndex > -1) {
         this.sceneObjects.splice(objIndex, 1);
@@ -407,52 +615,41 @@ export class RoomScene {
   }
 
   public selectObject(mouseX: number, mouseY: number): SceneObject | null {
-    // Convert mouse position to normalized device coordinates (-1 to +1)
     this.mouse.x = (mouseX / this.canvas.width) * 2 - 1;
     this.mouse.y = -(mouseY / this.canvas.height) * 2 + 1;
 
-    // Update raycaster
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // Clear previous selection highlights
     this.sceneObjects.forEach(obj => {
       obj.selected = false;
       this.updateSelectionHighlight(obj, false);
     });
 
-    // Build list of objects to test (all meshes in the scene)
     const intersectableObjects: THREE.Object3D[] = [];
     
-    // Add floor
     if (this.floor) {
       intersectableObjects.push(this.floor);
     }
     
-    // Add all wall parts
     if (this.walls) {
       this.walls.children.forEach(child => {
         intersectableObjects.push(child);
       });
     }
     
-    // Add all furniture groups (will test all children)
     this.furniture.forEach(item => {
       intersectableObjects.push(item.group);
     });
 
-    // Perform raycasting (recursive to hit children)
     const intersects = this.raycaster.intersectObjects(intersectableObjects, true);
 
     if (intersects.length > 0) {
-      // Get the top-level object (floor, walls, or furniture group)
       let hitObject = intersects[0].object;
       
-      // Traverse up to find the top-level object
       while (hitObject.parent && hitObject.parent !== this.scene) {
         hitObject = hitObject.parent;
       }
       
-      // Find the corresponding scene object
       const sceneObj = this.sceneObjects.find(obj => {
         if (obj.type === 'floor') {
           return hitObject === this.floor;
@@ -487,7 +684,7 @@ export class RoomScene {
     } else if (obj.type === 'walls' && this.walls) {
       this.walls.children.forEach(child => {
         if (child instanceof THREE.Mesh) {
-          const material = child.material as THREE.MeshStandardMaterial;
+          const material = child.material as THREE.MeshPhongMaterial;
           material.emissive.setHex(selected ? 0xffff77 : 0x000000);
           material.emissiveIntensity = highlightColor;
         }
@@ -495,9 +692,11 @@ export class RoomScene {
     } else if (obj.type === 'furniture' && obj.furnitureRef) {
       obj.furnitureRef.group.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-          const material = child.material as THREE.MeshStandardMaterial;
-          material.emissive.setHex(selected ? 0xffff77 : 0x000000);
-          material.emissiveIntensity = highlightColor;
+          const material = child.material as any;
+          if (material.emissive) {
+            material.emissive.setHex(selected ? 0xffff77 : 0x000000);
+            material.emissiveIntensity = highlightColor;
+          }
         }
       });
     }
@@ -672,7 +871,6 @@ export class RoomScene {
       
       let texture: THREE.Texture;
 
-      // Check if it's a procedural texture
       if (url.startsWith('procedural://')) {
         const type = url.replace('procedural://', '');
         const proceduralTexture = this.createProceduralTexture(type);
@@ -683,7 +881,6 @@ export class RoomScene {
         texture = proceduralTexture;
         console.log('✅ Procedural texture created successfully!');
       } else {
-        // Load external texture
         texture = await new Promise<THREE.Texture>((resolve, reject) => {
           this.textureLoader.load(
             url,
@@ -707,7 +904,6 @@ export class RoomScene {
         texture.wrapT = THREE.RepeatWrapping;
       }
       
-      // Apply texture based on object type
       if (this.selectedObject.type === 'floor' && this.floor) {
         texture.repeat.set(10, 10);
         const material = this.floor.material as THREE.MeshStandardMaterial;
@@ -715,12 +911,26 @@ export class RoomScene {
         material.needsUpdate = true;
         console.log(`✅ Texture applied to floor`);
       } else if (this.selectedObject.type === 'walls' && this.walls) {
-        texture.repeat.set(4, 2);
+        const brickWidth = 0.25;
+        const brickHeight = 0.08;
+        
         this.walls.children.forEach(child => {
           if (child instanceof THREE.Mesh) {
-            const material = child.material as THREE.MeshStandardMaterial;
+            const geometry = child.geometry as THREE.PlaneGeometry;
+            const material = child.material as THREE.MeshPhongMaterial;
+            
+            const wallWidth = geometry.parameters.width;
+            const wallHeight = geometry.parameters.height;
+            
+            const isBrickTexture = url.includes('brick') || url === 'procedural://brick';
+            const baseWidth = isBrickTexture ? brickWidth : 1.0;
+            const baseHeight = isBrickTexture ? brickHeight : 1.0;
+            
+            const repeatX = wallWidth / baseWidth;
+            const repeatY = wallHeight / baseHeight;
+            
             material.map = texture.clone();
-            material.map.repeat.set(4, 2);
+            material.map.repeat.set(repeatX, repeatY);
             material.needsUpdate = true;
           }
         });
@@ -729,7 +939,7 @@ export class RoomScene {
         texture.repeat.set(1, 1);
         this.selectedObject.furnitureRef.group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            const material = child.material as THREE.MeshStandardMaterial;
+            const material = child.material as THREE.MeshPhongMaterial;
             material.map = texture.clone();
             material.needsUpdate = true;
           }
@@ -750,10 +960,32 @@ export class RoomScene {
 
   public setLightDirection(x: number, y: number, z: number) {
     this.directionalLight.position.set(-x * 10, -y * 10, -z * 10);
+    if (this.floor && this.floor.material instanceof THREE.ShaderMaterial) {
+      const shaderMaterial = this.floor.material as THREE.ShaderMaterial;
+      const lightDir = new THREE.Vector3(-x, -y, -z).normalize();
+      shaderMaterial.uniforms.uLightDirection.value = lightDir;
+    }
   }
 
   public setLightIntensity(intensity: number) {
     this.directionalLight.intensity = intensity;
+  }
+
+  public setShadowsEnabled(enabled: boolean) {
+    this.shadowsEnabled = enabled;
+    this.renderer.shadowMap.enabled = enabled;
+    this.directionalLight.castShadow = enabled;
+    
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        if (object !== this.floor && !(this.walls && this.walls.children.includes(object))) {
+          object.castShadow = enabled;
+        }
+        if (object === this.floor || (this.walls && this.walls.children.includes(object))) {
+          object.receiveShadow = enabled;
+        }
+      }
+    });
   }
 
   public dispose() {
