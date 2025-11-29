@@ -1,5 +1,8 @@
 # 3D Room Designer
 
+## Autor
+**Mateusz Adamczyk**
+
 ![Screenshot aplikacji](./app/screenshots/demo.png)
 
 ## Opis projektu
