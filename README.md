@@ -13,7 +13,7 @@ Aplikacja pozwala na interaktywne projektowanie pomieszczeń w przestrzeni 3D. U
 
 Aplikacja jest dostępna online: [https://room-designer-3d.vercel.app](https://room-designer-3d.vercel.app)
 
-![Animacja aplikacji](https://i.imgur.com/OrkkkUm.mp4)
+![Animacja aplikacji](./app/screenshots/animation_optimized.gif)
 
 Można też zbudować ją jako standalone desktop app (instrukcja poniżej).
 
