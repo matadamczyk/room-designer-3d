@@ -56,7 +56,7 @@ Można też zbudować ją jako standalone desktop app (instrukcja poniżej).
 
 1. Sklonuj repozytorium
 ```bash
-git clone https://github.com/yourusername/room-designer-3d.git
+git clone https://github.com/matadamczyk/room-designer-3d.git
 cd room-designer-3d/app
 ```
 
@@ -128,13 +128,20 @@ Dostępne są tekstury proceduralne (drewno, cegła, metal, itp.) oraz możliwo�
 ## Meble
 
 Dostępne typy mebli:
-- Stół (prostokątny blat + 4 nogi)
-- Krzesło (siedzisko + oparcie + 4 nogi)
-- Regał (boki + 4 półki)
-- Sofa (siedzisko + oparcie + podłokietniki)
-- Lampa (podstawa + słupek + abażur + point light)
+- Stół
+- Krzesło
+- Regał
+- Sofa
+- Lampa
 
 Wszystkie meble są generowane proceduralnie z prostych brył geometrycznych.
+
+### Shadery GLSL
+Three.js wykorzystuje shadery GLSL do renderowania całej sceny:
+- **Vertex shader** - transformacje wierzchołków, obliczenia pozycji w przestrzeni ekranu
+- **Fragment shader** - obliczenia oświetlenia Phonga (ambient + diffuse + specular), shadow mapping, teksturowanie
+
+Wbudowane materiały Three.js (`MeshStandardMaterial`, `MeshPhongMaterial`) kompilują się do shaderów GLSL, które wykonują się na GPU.
 
 ### Shadow Mapping
 Cienie są generowane przy użyciu wbudowanego systemu Three.js:
@@ -159,17 +166,17 @@ Dodatkowo każda lampa ma point light który dynamicznie oświetla scenę.
 
 ## Wykorzystane biblioteki
 
-- [Three.js](https://threejs.org/) - biblioteka do grafiki 3D w WebGL (MIT)
-- [lil-gui](https://lil-gui.georgealways.com/) - GUI library (MIT)
-- [Vue 3](https://vuejs.org/) - framework JavaScript (MIT)
-- [Vite](https://vitejs.dev/) - build tool (MIT)
-- [Tauri](https://tauri.app/) - framework do aplikacji desktopowych (MIT) - opcjonalnie
+- [Three.js](https://threejs.org/) - biblioteka do grafiki 3D w WebGL
+- [lil-gui](https://lil-gui.georgealways.com/) - GUI library
+- [Vue 3](https://vuejs.org/) - framework JavaScript
+- [Vite](https://vitejs.dev/) - build tool
+- [Tauri](https://tauri.app/) - framework do aplikacji desktopowych - opcjonalnie
 
 ## Assety i tekstury
 
 - Opcjonalnie można wczytać tekstury z zewnętrznych źródeł:
-  - [Poly Haven](https://polyhaven.com/textures) - CC0
-  - [ambientCG](https://ambientcg.com/) - CC0
+  - [Poly Haven](https://polyhaven.com/textures)
+  - [ambientCG](https://ambientcg.com/)
 
 ## Licencja
 
