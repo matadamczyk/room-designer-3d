@@ -72,6 +72,12 @@ onMounted(() => {
   sofa.group.position.set(0, 0, 6);
   sofa.group.rotation.y = Math.PI;
 
+  const lamp1 = scene.addFurniture('lamp');
+  lamp1.group.position.set(-6, 0, -4);
+
+  const lamp2 = scene.addFurniture('lamp');
+  lamp2.group.position.set(4, 0, 4);
+
   controls = new OrbitControls(
     canvas.value,
     scene.getCamera(),
